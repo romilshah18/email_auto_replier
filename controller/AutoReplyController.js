@@ -10,14 +10,11 @@ const startAutoReplyJob = async () => {
 
             const emailService = new EmailService(emailServiceName);
             await emailService.authorize();
-            const labels = await emailService.getAllLabels();
-            console.log("Label Ids: ",labels);
+
             console.log("Process start for auto replying to new threads");
             const test = await emailService.autoRespondToNewEmails();
             console.log("Process stop for auto replying to new threads");
-            // console.log("Send Email Response: ",test);
-            // const result = await emailService.fetchNewUnreadThreads();
-            // console.log("Result: ",result);
+        
             const waitTime = randomIntFromInterval(minWaitTime,maxWaitTime);
             console.log(`Waiting for ${waitTime} seconds before starting the next check`);
             await delay(waitTime*1000);

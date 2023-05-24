@@ -1,4 +1,4 @@
-const { EmailClients } = require('../../constants/EmailClients.constants')
+const { EmailClients } = require('../../constants/EmailClientsConstants')
 const GmailService  = require ('./GmailService');
 const { google } = require('googleapis');
 
@@ -20,8 +20,9 @@ class EmailService {
     async getAllLabels(){
         return await this.emailService.getAllLabels(this.emailClient);
     }
-    async getNewUnreadThreads(){
-        return await this.emailService.getNewUnreadThreads(this.emailClient);
+    async getNewUnreadThreads(labelId){
+        const allThread = await this.emailService.getNewUnreadThreads(this.emailClient, labelId);
+        return allThread;
     }
     async modifyThread(threadId, labelIds){
         return await this.emailService.modifyThread(this.emailClient, threadId, labelIds);
@@ -49,30 +50,31 @@ class EmailService {
     }
 
     async autoRespondToNewEmails(){
-        const allLabels = await this.getAllLabels();
-        let labelDetails = null;
-        for(const label of allLabels){
-            if(label.name == process.env.AUTO_REPLY_LABEL_NAME){
-                labelDetails =  label;
-                break;
+        try{
+            const allLabels = await this.getAllLabels();
+            let labelDetails = null;
+            for(const label of allLabels){
+                if(label.name == process.env.AUTO_REPLY_LABEL_NAME){
+                    labelDetails =  label;
+                    break;
+                }
             }
+            if(!labelDetails){
+                labelDetails = await this.createNewLabel(process.env.AUTO_REPLY_LABEL_NAME);
+            }
+            const unreadThreads = await this.getNewUnreadThreads(labelDetails.id);
+            for(const thread of unreadThreads){
+                const threadId = thread.id;
+                const firstThreadMessage = await this.getFirstMessageOfThread(thread?.id);
+                const senderEmail = await this.getSenderDataFromMessage(firstThreadMessage);
+                const message = "This is an auto reply from NODE JS application for Listed Assignment.";
+                await this.addAutoReplyReplyToThread(threadId,message,senderEmail);
+                await this.modifyThread(threadId, [labelDetails.id]);
+            }
+        }catch(error){
+            console.log("Error occured while autoResponding emails to unread threads. Error Message:",error);
         }
-        if(!labelDetails){
-            labelDetails = await this.createNewLabel(process.env.AUTO_REPLY_LABEL_NAME);
-        }
-        const unreadThreads = await this.getNewUnreadThreads();
-        console.log("Unread Threads Found Lenght:",unreadThreads.length);
-        for(const thread of unreadThreads){
-            const threadId = thread.id;
-            const firstThreadMessage = await this.getFirstMessageOfThread(thread?.id);
-            console.log("First Thread Message: ",firstThreadMessage);
-            const senderEmail = await this.getSenderDataFromMessage(firstThreadMessage);
-            console.log('Sender Email Found:',senderEmail);
-            const message = "This is an auto reply from NODE JS application for Listed Assignment.";
-            await this.addAutoReplyReplyToThread(threadId,message,senderEmail);
-            console.log("First Thread Message: ",firstThreadMessage,firstThreadMessage?.payload.parts);
-            await this.modifyThread(threadId, [labelDetails.id]);
-        }
+        
     } 
 };
 module.exports = EmailService;

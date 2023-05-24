@@ -71,9 +71,6 @@ class GmailService {
             console.log('No labels found.');
             return;
         }
-        labels.forEach((label) => {
-            console.log(`- ${label.name} ${label.id}`);
-        });
         return labels;
     }
     async getAllLabelIds(gmail){
@@ -81,15 +78,33 @@ class GmailService {
         return allLabels.map((label)=>label.id);
     }
 
-    async getNewUnreadThreads(gmail){
+    async getNewUnreadThreads(gmail, labelId){
+        // TODO: IMPLEMENT PAGINATION IN THIS API
+        const unreadThreadsList = [];
         const threadsList = await gmail.users.threads.list({
             userId: 'me',
             // Filtering out those threads which are already applied.
             q:`label:{-${process.env.AUTO_REPLY_LABEL_NAME}} after:2023/5/22`,
         })
-        console.log("Response: ",threadsList);
-        return threadsList?.data?.threads ? threadsList?.data?.threads : [];
-    } 
+        const allThreads = threadsList?.data?.threads ? threadsList?.data?.threads : [];
+        for(const thread of allThreads){
+            const threadDetails = await this.getThreadDetails(gmail, thread.id);
+            const threadMessages = threadDetails.data.messages;
+            let isSkip = false;
+            for(const message of threadMessages){
+                const messageLabelIds = message.labelIds;
+                const filterMessages = messageLabelIds.filter((messageLabelId)=>messageLabelId==labelId);
+                if(filterMessages && filterMessages.length>0){
+                    isSkip = true;
+                    break;
+                }
+            }
+            if(!isSkip){
+                unreadThreadsList.push(thread);
+            }
+        }
+        return unreadThreadsList;
+    }
 
     async getThreadDetails(gmail, threadId){
         const threadDetails = await gmail.users.threads.get({
@@ -116,7 +131,6 @@ class GmailService {
                 'From'
             ]
         });
-        // console.log("Message Details: ",messageDetails.data.payload.headers);
         return messageDetails;
     }
     async getSenderDataFromMessage(gmail, messageDetails){
@@ -124,7 +138,6 @@ class GmailService {
         if(messageDetails){
             const messageMetaDataDetails = await this.getMessageMetaDataDetails(gmail, messageDetails.id);
             const data = {};
-            // console.log("Headers: ",messageDetails?.payload?.headers);
             for(const headers of messageMetaDataDetails?.data?.payload?.headers){
                 if(headers.name == "From"){
                     data.senderEmail = headers.value;
@@ -138,7 +151,6 @@ class GmailService {
                     data.messageId = headers.value;
                 }
             }
-            // console.log("Return Sender Data: ",data);
             return data;
         }
         throw new Error("Message Details not found. Please send valid message details.");
@@ -161,7 +173,6 @@ class GmailService {
         return result;
     }
     async sendEmail(gmail, threadId, message, receiver){
-        // console.log("Received Data: ",)
         const rawMessage = 
 `From: Romil Shah <romilshah1545@gmail.com> 
 To: ${receiver.senderEmail}
@@ -171,9 +182,7 @@ Subject: ${receiver.subject}
 
 ${message}`;
 
-// console.log("Raw Message generated: ",rawMessage);
         const encodedMessage = encode(rawMessage, true);
-        // console.log("Encoded Message:",encodedMessage);
         const result = await gmail.users.messages.send({
             userId: 'me',
             requestBody: {  
@@ -181,7 +190,6 @@ ${message}`;
                 raw: encodedMessage
             }
         });
-        // console.log("Result of New Message: ",result);
     }
 
     async createNewLabel(gmail, labelName){
